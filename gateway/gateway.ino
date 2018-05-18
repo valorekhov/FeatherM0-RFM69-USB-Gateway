@@ -15,7 +15,7 @@
 //#define FREQUENCY     RF69_868MHZ
 //#define FREQUENCY     RF69_915MHZ
 #define ENCRYPTKEY    "sampleEncryptKey" //exactly the same 16 characters/bytes on all nodes!
-#define IS_RFM69HW_HCW  //uncomment only for RFM69HW/HCW! Leave out if you have RFM69W/CW!
+#define IS_RFM69HW_HCW  1 //uncomment only for RFM69HW/HCW! Leave out if you have RFM69W/CW!
 //*********************************************************************************************
 //Auto Transmission Control - dials down transmit power to save battery
 //Usually you do not need to always transmit at max output power
@@ -36,9 +36,9 @@
 #define LED LED_BUILTIN
 
 #ifdef ENABLE_ATC
-  RFM69_ATC radio;
+  RFM69_ATC radio = RFM69_ATC(RFM69_CS, RFM69_IRQ, IS_RFM69HW_HCW, RFM69_IRQN);
 #else
-  RFM69 radio;
+  RFM69 radio = RFM69(RFM69_CS, RFM69_IRQ, IS_RFM69HW_HCW, RFM69_IRQN);
 #endif
 
 bool promiscuousMode = false; //set to 'true' to sniff all packets on the same network
