@@ -8,13 +8,15 @@
 //*********************************************************************************************
 //************ IMPORTANT SETTINGS - YOU MUST CHANGE/CONFIGURE TO FIT YOUR HARDWARE *************
 //*********************************************************************************************
-#define NODEID        1    //unique for each node on same network
-#define NETWORKID     100  //the same on all nodes that talk to each other
+//#define NODEID        1    // Moved to Network_Config.h
+//#define NETWORKID     100  // Moved to Network_Config.h
 //Match frequency to the hardware version of the radio on your Moteino (uncomment one):
-#define FREQUENCY     RF69_433MHZ
+#define FREQUENCY     RF69_433MHZ // Moved to Network_Config.h
 //#define FREQUENCY     RF69_868MHZ
 //#define FREQUENCY     RF69_915MHZ
-#define ENCRYPTKEY    "sampleEncryptKey" //exactly the same 16 characters/bytes on all nodes!
+//#define ENCRYPTKEY    "sampleEncryptKey" // Moved to Network_Config.h
+#include "Network_Config.h"
+
 #define IS_RFM69HW_HCW  1 //uncomment only for RFM69HW/HCW! Leave out if you have RFM69W/CW!
 //*********************************************************************************************
 //Auto Transmission Control - dials down transmit power to save battery
@@ -22,7 +24,7 @@
 //By reducing TX power even a little you save a significant amount of battery power
 //This setting enables this gateway to work with remote nodes that have ATC enabled to
 //dial their power down to only the required level
-//#define ENABLE_ATC    //comment out this line to disable AUTO TRANSMISSION CONTROL
+#define ENABLE_ATC    //comment out this line to disable AUTO TRANSMISSION CONTROL
 //*********************************************************************************************
 #define SERIAL_BAUD   115200
 
@@ -44,7 +46,7 @@
 bool promiscuousMode = false; //set to 'true' to sniff all packets on the same network
 
 void setup() {
-  while (!Serial) {blink(500);}
+  while (!Serial) {blink(1000);blink(1500);blink(2000);}
   Serial.begin(SERIAL_BAUD);
   pinMode(LED_BUILTIN, OUTPUT);
   blink(3000);  
@@ -92,8 +94,6 @@ void setup() {
 #endif
 }
 
-byte ackCount=0;
-uint32_t packetCount = 0;
 void loop() {
   //process any serial input
   if (Serial.available() > 0)
@@ -145,44 +145,72 @@ void loop() {
       Serial.print(temperature);
       Serial.print("C, ");
     }
+    if (input == '\xFC'){
+      input = Serial.read();
+      if (input == '\x00'){ // NOP
+        Serial.print("\xFC\x01");
+        Serial.write((byte)0);
+        Serial.flush();
+        Serial.write(0x0A);
+      }
+      if (input == '\x10'){ // SEND
+        byte state = Serial.read();
+        byte dstNodeId = Serial.read();
+        byte retries = Serial.read();
+        byte len = Serial.read();
+        char* txBuf = new char[len];
+        for(byte i = 0; i < len; i++){
+          txBuf[i] = Serial.read();
+        }
+        
+        Serial.print("\xFC\x01\x10");
+        Serial.write(state);
+        if (radio.sendWithRetry(dstNodeId, txBuf, len, retries)){  // 0 = only 1 attempt, no retries
+          Serial.write((byte)0);
+        } else {
+          Serial.write((byte)1);
+        }
+        Serial.write(0x0A);
+        Serial.flush();
+        delete [] txBuf;
+      }
+    }
   }
 
   if (radio.receiveDone())
   {
-    Serial.print("#[");
-    Serial.print(++packetCount);
-    Serial.print(']');
-    Serial.print('[');Serial.print(radio.SENDERID, DEC);Serial.print("] ");
-    if (promiscuousMode)
-    {
-      Serial.print("to [");Serial.print(radio.TARGETID, DEC);Serial.print("] ");
+    char buf[3];
+    Serial.print("\xFC\x11");
+    encodeByte(NETWORKID);
+    encodeByte(radio.SENDERID);
+    encodeByte(radio.TARGETID);
+    encodeByte(radio.RSSI);
+    encodeByte(radio.DATALEN);
+    for (byte i = 0; i < radio.DATALEN; i++){
+      encodeByte((uint8_t)radio.DATA[i]);
     }
-    for (byte i = 0; i < radio.DATALEN; i++)
-      Serial.print((char)radio.DATA[i]);
-    Serial.print("   [RX_RSSI:");Serial.print(radio.RSSI);Serial.print("]");
     
     if (radio.ACKRequested())
     {
       byte theNodeID = radio.SENDERID;
       radio.sendACK();
-      Serial.print(" - ACK sent.");
-
-      // When a node requests an ACK, respond to the ACK
-      // and also send a packet requesting an ACK (every 3rd one only)
-      // This way both TX/RX NODE functions are tested on 1 end at the GATEWAY
-      if (ackCount++%3==0)
-      {
-        Serial.print(" Pinging node ");
-        Serial.print(theNodeID);
-        Serial.print(" - ACK...");
-        delay(3); //need this when sending right after reception .. ?
-        if (radio.sendWithRetry(theNodeID, "ACK TEST", 8, 0))  // 0 = only 1 attempt, no retries
-          Serial.print("ok!");
-        else Serial.print("nothing");
-      }
+      Serial.write((byte)1);
+    } else {
+      Serial.write((byte)0);
     }
-    Serial.println();
-    blink(3);
+    Serial.write(0x0A);
+    Serial.flush();
+    blink(100);blink(100);blink(100);
+  }
+}
+
+void encodeByte(uint8_t value){
+  if (value == 0xFC){
+    Serial.print("\xFC\xFC");
+  } else if (value == 0x0A){
+    Serial.print("\xFC\xFF");
+  } else {
+    Serial.write(value);
   }
 }
 
